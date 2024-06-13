@@ -5,12 +5,16 @@ import sympy as sp
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import pandas as pd
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from gr_particle_path_tool.metrics import (
     schwarzschild_metric, kerr_metric, reissner_nordstrom_metric, kerr_newman_metric,
     flrw_metric, de_sitter_metric, anti_de_sitter_metric, minkowski_metric,
-    vaidya_metric, gottingen_metric, bertotti_robinson_metric
+    vaidya_metric, gottingen_metric, bertotti_robinson_metric,
+    christoffel_symbols, geodesic_equations, solve_geodesic
 )
 from gr_particle_path_tool.utils import christoffel_symbols, geodesic_equations, solve_geodesic
+from gr_particle_path_tool.event_horizon import detect_event_horizon
 
 class GRParticlePathTool:
     def __init__(self, root):
@@ -121,32 +125,56 @@ class GRParticlePathTool:
             dphi_dtau0 = float(self.dphi_dtau_entry.get())
 
             metric_func = self.get_metric()
-            metric = metric_func()
+            metric_params = {"M": M}
+        
+            # Add relevant parameters for specific metrics
+            if metric_func in [kerr_metric, kerr_newman_metric]:
+                metric_params["a"] = a
+            if metric_func in [reissner_nordstrom_metric, kerr_newman_metric]:
+                metric_params["Q"] = Q
+
+            metric = metric_func(**metric_params)
 
             coords = sp.symbols('t r theta phi')
             christoffel = christoffel_symbols(metric, coords)
 
-            initial_conditions = [0, r0, theta0, phi0, 0, dr_dtau0, dtheta_dtau0, dphi_dtau0]
-            t_span = (0, 100)
-            t_eval = np.linspace(0, 100, 1000)
+            def geodesic_equations(t, Y, christoffel):
+                dY = np.zeros_like(Y)
+                dY[:4] = Y[4:]
+                d2t = -sum(christoffel[0][i][j] * Y[4 + i] * Y[4 + j] for i in range(4) for j in range(4))
+                d2r = -sum(christoffel[1][i][j] * Y[4 + i] * Y[4 + j] for i in range(4) for j in range(4))
+                d2theta = -sum(christoffel[2][i][j] * Y[4 + i] * Y[4 + j] for i in range(4) for j in range(4))
+                d2phi = -sum(christoffel[3][i][j] * Y[4 + i] * Y[4 + j] for i in range(4) for j in range(4))
+                dY[4:] = [d2t, d2r, d2theta, d2phi]
+                return dY
 
-            geodesic_func = geodesic_equations(christoffel, coords)
-            self.solution = solve_geodesic(geodesic_func, initial_conditions, t_span, t_eval)
+            initial_conditions = [0, r0, theta0, phi0, dr_dtau0, dtheta_dtau0, dphi_dtau0, 0]
+            t_span = (0, 10000)
+            t_eval = np.linspace(0, 10000, 100000)
 
-            self.plot_geodesic(self.solution, coords)
+            sol = solve_geodesic(geodesic_equations, initial_conditions, t_span, t_eval, args=(christoffel,))
+
+            self.plot_geodesic(sol, coords)
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
     def plot_geodesic(self, solution, coords):
-        fig = plt.figure()
+        fig = Figure(figsize=(5, 5), dpi=100)
         ax = fig.add_subplot(111, projection='3d')
         ax.plot(solution.y[1], solution.y[2], solution.y[3], label="Geodesic Path")
+        ax.scatter([0], [0], [0], color='black', s=100)  # Black hole in the center
+        ax.set_xlim([-15, 15])  # Adjust the x-axis limits
+        ax.set_ylim([-15, 15])  # Adjust the y-axis limits
+        ax.set_zlim([-15, 15])  # Adjust the z-axis limits
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
         ax.set_zlabel('Z')
         ax.legend()
         ax.set_title("Particle Path around Black Hole")
-        plt.show()
+
+        canvas = FigureCanvasTkAgg(fig, master=self.root)
+        canvas.draw()
+        canvas.get_tk_widget().grid(row=3, column=0, columnspan=2, pady=10)
 
     def check_stability(self):
         messagebox.showinfo("Stability Check", "Stability check feature coming soon.")
@@ -174,7 +202,12 @@ class GRParticlePathTool:
             df.to_csv(filepath, index=False)
 
     def detect_event_horizon(self):
-        messagebox.showinfo("Event Horizon Detection", "Event horizon detection feature coming soon.")
+        metric = self.metric_var.get().lower().replace("-", "_")
+        try:
+            horizon = detect_event_horizon(metric, float(self.mass_entry.get()), float(self.a_entry.get()), float(self.charge_entry.get()))
+            messagebox.showinfo("Event Horizon Detection", f"Event Horizon: {horizon}")
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
 
     def comparative_analysis(self):
         messagebox.showinfo("Comparative Analysis", "Comparative analysis feature coming soon.")
