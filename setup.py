@@ -14,7 +14,6 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            # Add any console scripts here if needed
         ],
     },
     include_package_data=True,
