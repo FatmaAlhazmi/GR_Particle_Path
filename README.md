@@ -9,10 +9,9 @@
 - [Metrics](#metrics)
 - [Contribution](#contribution)
 - [License](#license)
-- [Acknowledgements](#acknowledgements)
 
 ## Introduction
-The GR Particle Path Research Tool is designed for researchers and enthusiasts in the field of general relativity and black hole physics. This tool provides a comprehensive suite for simulating and visualizing the paths of particles around black holes, allowing for detailed analysis and exploration of various metrics.
+The GR particle path tool is designed for enthusiasts in the field of general relativity and black hole physics. This tool provides a comprehensive suite for simulating and visualizing the paths of particles around black holes, allowing for detailed analysis and exploration of various metrics.
 
 ## Features
 - **Metric Selection**: Choose from various predefined metrics such as Schwarzschild, Kerr, Reissner-Nordström, and more.
@@ -32,7 +31,7 @@ The GR Particle Path Research Tool is designed for researchers and enthusiasts i
 - **Detailed Documentation and Tutorials**: Access comprehensive documentation and interactive tutorials.
 
 ## Installation
-To install the GR Particle Path Research Tool, follow these steps:
+To install the tool:
 
 1. **Clone the Repository:**
    ```bash
@@ -69,22 +68,6 @@ To launch the graphical user interface:
 python gui.py
 ```
 
-## GUI Features
-### Metric Selection
-- Select from various predefined metrics: Schwarzschild, Kerr, Reissner-Nordström, FLRW, etc.
-
-### Parameters and Initial Conditions
-- Set initial conditions for mass, spin, charge, initial positions, and velocities.
-
-### Additional Features
-- **Event Horizon Detection**: Automatically detect and highlight the event horizon.
-- **Energy and Angular Momentum**: Calculate and display energy and angular momentum of the particle.
-- **Parameter Sweep**: Automatically vary parameters over specified ranges and observe the outcomes.
-- **Save and Load Simulations**: Save the state of a simulation to disk and reload it later.
-- **Export Data**: Export simulation data in formats like CSV and JSON for further analysis.
-- **Real-Time Parameter Adjustment**: Adjust parameters while the simulation is running and see the results immediately.
-- **Comparative Analysis**: Compare multiple simulations side-by-side.
-
 ## Metrics
 ### Available Metrics
 - **Schwarzschild Metric**
@@ -100,7 +83,7 @@ python gui.py
 - **Göttingen Metric**
 
 ## Contribution
-We welcome contributions! 
+Contributions are welcomed! 
 
 ## License
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. 
