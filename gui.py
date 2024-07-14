@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import numpy as np
 import sympy as sp
+from sympy import symbols, Derivative
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import pandas as pd
@@ -10,8 +11,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from gr_particle_path_tool.metrics import (
     schwarzschild_metric, kerr_metric, reissner_nordstrom_metric, kerr_newman_metric,
     flrw_metric, de_sitter_metric, anti_de_sitter_metric, minkowski_metric,
-    vaidya_metric, gottingen_metric, bertotti_robinson_metric,
-    christoffel_symbols, geodesic_equations, solve_geodesic
+    vaidya_metric, gottingen_metric, bertotti_robinson_metric
 )
 from gr_particle_path_tool.utils import christoffel_symbols, geodesic_equations, solve_geodesic
 from gr_particle_path_tool.event_horizon import detect_event_horizon
@@ -115,62 +115,102 @@ class GRParticlePathTool:
     def run_simulation(self):
         try:
             M = float(self.mass_entry.get())
-            a = float(self.a_entry.get())
-            Q = float(self.charge_entry.get())
             r0 = float(self.r_entry.get())
-            theta0 = float(self.theta_entry.get())
-            phi0 = float(self.phi_entry.get())
-            dr_dtau0 = float(self.dr_dtau_entry.get())
-            dtheta_dtau0 = float(self.dtheta_dtau_entry.get())
-            dphi_dtau0 = float(self.dphi_dtau_entry.get())
+            θ0 = float(self.theta_entry.get())
+            dot_r0 = float(self.dr_dtau_entry.get())
+            dot_theta0 = float(self.dtheta_dtau_entry.get())
+            h = 0.01  # Integration step size
 
-            metric_func = self.get_metric()
-            metric_params = {"M": M}
-        
-            # Add relevant parameters for specific metrics
-            if metric_func in [kerr_metric, kerr_newman_metric]:
-                metric_params["a"] = a
-            if metric_func in [reissner_nordstrom_metric, kerr_newman_metric]:
-                metric_params["Q"] = Q
+            # Calculate constants L and E
+            L_value = np.sqrt(M) * r0 / np.sqrt(r0 - 3 * M)
+            E_value = np.sqrt(dot_r0**2 + ((r0**2 + r0**4 * dot_theta0**2 + L_value**2 * (1 / np.sin(θ0))**2) * (1 - 2 * M / r0)) / r0**2)
 
-            metric = metric_func(**metric_params)
+            # Initial values for [ρ, ρ_dot, θ, θ_dot]
+            y0 = np.array([r0, dot_r0, θ0, dot_theta0])
+            t_span = (0, 200)
+            dt = 0.01
+            t_values = np.arange(t_span[0], t_span[1], dt)
 
-            coords = sp.symbols('t r theta phi')
-            christoffel = christoffel_symbols(metric, coords)
+            # Solving using RK4
+            sol = np.zeros((len(t_values), len(y0)))
+            sol[0] = y0
 
-            def geodesic_equations(t, Y, christoffel):
-                dY = np.zeros_like(Y)
-                dY[:4] = Y[4:]
-                d2t = -sum(christoffel[0][i][j] * Y[4 + i] * Y[4 + j] for i in range(4) for j in range(4))
-                d2r = -sum(christoffel[1][i][j] * Y[4 + i] * Y[4 + j] for i in range(4) for j in range(4))
-                d2theta = -sum(christoffel[2][i][j] * Y[4 + i] * Y[4 + j] for i in range(4) for j in range(4))
-                d2phi = -sum(christoffel[3][i][j] * Y[4 + i] * Y[4 + j] for i in range(4) for j in range(4))
-                dY[4:] = [d2t, d2r, d2theta, d2phi]
-                return dY
+            for i in range(1, len(t_values)):
+                sol[i] = self.rk4_step(self.system_of_eqs, sol[i-1], t_values[i-1], dt, L_value)
 
-            initial_conditions = [0, r0, theta0, phi0, dr_dtau0, dtheta_dtau0, dphi_dtau0, 0]
-            t_span = (0, 10000)
-            t_eval = np.linspace(0, 10000, 100000)
+            # Interpolation functions
+            rho_s = lambda tau: np.interp(tau, t_values, sol[:, 0])
+            theta_s = lambda tau: np.interp(tau, t_values, sol[:, 2])
 
-            sol = solve_geodesic(geodesic_equations, initial_conditions, t_span, t_eval, args=(christoffel,))
+            # Equation for φ
+            sol_phi = np.zeros(len(t_values))
+            sol_phi[0] = 0  # Initial condition for φ
 
-            self.plot_geodesic(sol, coords)
+            for i in range(1, len(t_values)):
+                sol_phi[i] = self.rk4_step(self.phi_eqs, sol_phi[i-1], t_values[i-1], dt, rho_s, theta_s, L_value)
+
+            # Interpolation function for φ
+            phi_s = lambda tau: np.interp(tau, t_values, sol_phi)
+
+            # Plotting the 3D orbit
+            rho_values = np.array([rho_s(tau) for tau in t_values])
+            theta_values = np.array([theta_s(tau) for tau in t_values])
+            phi_values = np.array([phi_s(tau) for tau in t_values])
+
+            x_vals = rho_values * np.sin(theta_values) * np.cos(phi_values)
+            y_vals = rho_values * np.sin(theta_values) * np.sin(phi_values)
+            z_vals = rho_values * np.cos(theta_values)
+
+            self.plot_geodesic(x_vals, y_vals, z_vals)
+
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
-    def plot_geodesic(self, solution, coords):
+    def system_of_eqs(self, t, y, L):
+        ρ, ρ_dot, θ, θ_dot = y
+
+        csc_θ = 1 / np.sin(θ)
+        cot_θ = np.cos(θ) / np.sin(θ)
+
+        θ_ddot = (L**2 * cot_θ * csc_θ**2 - 2 * ρ**3 * θ_dot * ρ_dot) / ρ**4
+        ρ_ddot = (L**2 * csc_θ**2 + ρ**4 * θ_dot**2 - 3 * L**2 * csc_θ**2 / ρ - ρ - 3 * ρ**3 * θ_dot**2) / ρ**3
+
+        return np.array([ρ_dot, ρ_ddot, θ_dot, θ_ddot])
+
+    def phi_eqs(self, t, y, rho_s, theta_s, L):
+        φ = y
+        ρ_val = rho_s(t)
+        θ_val = theta_s(t)
+        sin_θ_val = np.sin(θ_val)
+        dφ_dt = L / (ρ_val**2 * sin_θ_val**2)
+        return dφ_dt
+
+    def rk4_step(self, func, y, t, dt, *args):
+        k1 = dt * func(t, y, *args)
+        k2 = dt * func(t + dt/2, y + k1/2, *args)
+        k3 = dt * func(t + dt/2, y + k2/2, *args)
+        k4 = dt * func(t + dt, y + k3, *args)
+        return y + (k1 + 2*k2 + 2*k3 + k4) / 6
+
+    def plot_geodesic(self, x_vals, y_vals, z_vals):
         fig = Figure(figsize=(5, 5), dpi=100)
         ax = fig.add_subplot(111, projection='3d')
-        ax.plot(solution.y[1], solution.y[2], solution.y[3], label="Geodesic Path")
+        ax.plot(x_vals, y_vals, z_vals, label="Geodesic Path")
         ax.scatter([0], [0], [0], color='black', s=100)  # Black hole in the center
-        ax.set_xlim([-15, 15])  # Adjust the x-axis limits
-        ax.set_ylim([-15, 15])  # Adjust the y-axis limits
-        ax.set_zlim([-15, 15])  # Adjust the z-axis limits
+
+        max_range = np.array([x_vals.max() - x_vals.min(), y_vals.max() - y_vals.min(), z_vals.max() - z_vals.min()]).max() / 2.0
+        mid_x = (x_vals.max() + x_vals.min()) * 0.5
+        mid_y = (y_vals.max() + y_vals.min()) * 0.5
+        mid_z = (z_vals.max() + z_vals.min()) * 0.5
+        ax.set_xlim(mid_x - max_range, mid_x + max_range)
+        ax.set_ylim(mid_y - max_range, mid_y + max_range)
+        ax.set_zlim(mid_z - max_range, mid_z + max_range)
+
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
         ax.set_zlabel('Z')
+        ax.set_title('3D Orbit around a Schwarzschild Black Hole')
         ax.legend()
-        ax.set_title("Particle Path around Black Hole")
 
         canvas = FigureCanvasTkAgg(fig, master=self.root)
         canvas.draw()
